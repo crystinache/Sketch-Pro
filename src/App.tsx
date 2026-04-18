@@ -33,58 +33,35 @@ export default function App() {
   });
   
   const [isListening, setIsListening] = useState(false);
-  const [recognition, setRecognition] = useState<any>(null);
+  const hiddenInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     localStorage.setItem('sketchpro-presets', JSON.stringify(presets));
   }, [presets]);
 
-  useEffect(() => {
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (SpeechRecognition) {
-      const rec = new SpeechRecognition();
-      rec.continuous = true;
-      rec.interimResults = true;
-      rec.lang = 'it-IT';
-
-      rec.onresult = (event: any) => {
-        const transcript = Array.from(event.results)
-          .map((result: any) => result[0])
-          .map((result: any) => result.transcript)
-          .join('')
-          .toUpperCase();
-
-        presets.forEach(preset => {
-          if (transcript.includes(preset.triggerWord)) {
-            setHistory(prev => [...prev, ...preset.strokes]);
-            stopListening();
-          }
-        });
-      };
-
-      rec.onend = () => {
-        setIsListening(false);
-      };
-
-      setRecognition(rec);
-    }
-  }, [presets]);
+  const handleVoiceInput = (text: string) => {
+    const upperText = text.toUpperCase();
+    presets.forEach(preset => {
+      if (upperText.includes(preset.triggerWord)) {
+        setHistory(prev => [...prev, ...preset.strokes]);
+        stopListening();
+      }
+    });
+  };
 
   const startListening = () => {
-    if (recognition && !isListening) {
-      try {
-        recognition.start();
-        setIsListening(true);
-      } catch (e) {
-        console.error("Speech recognition error:", e);
-      }
-    }
+    setIsListening(true);
+    setTimeout(() => {
+      hiddenInputRef.current?.focus();
+      hiddenInputRef.current?.click();
+    }, 100);
   };
 
   const stopListening = () => {
-    if (recognition && isListening) {
-      recognition.stop();
-      setIsListening(false);
+    setIsListening(false);
+    if (hiddenInputRef.current) {
+      hiddenInputRef.current.value = "";
+      hiddenInputRef.current.blur();
     }
   };
 
@@ -98,7 +75,12 @@ export default function App() {
       window.removeEventListener('open-secret-menu', openSecretMenu);
       window.removeEventListener('start-voice-listening', startVoice);
     };
-  }, [recognition, isListening]);
+  }, []);
+
+  const pushToCanvas = useCallback((strokes: Stroke[]) => {
+    setHistory(prev => [...prev, ...strokes]);
+    setRedoStack([]);
+  }, []);
   
   const handleUndo = useCallback(() => {
     if (history.length === 0) return;
@@ -162,9 +144,19 @@ export default function App() {
             onClose={() => setShowSecretMenu(false)}
             onSavePresets={setPresets}
             currentStrokes={history}
+            onPushToCanvas={pushToCanvas}
           />
         )}
       </AnimatePresence>
+
+      {/* Hidden input to trigger native keyboard/voice */}
+      <input 
+        ref={hiddenInputRef}
+        type="text"
+        className="fixed opacity-0 pointer-events-none top-[-100px]"
+        onChange={(e) => handleVoiceInput(e.target.value)}
+        onBlur={() => setIsListening(false)}
+      />
 
       {/* Voice feedback overlay */}
       <AnimatePresence>
